@@ -1763,6 +1763,8 @@
 	/*#__PURE__*/
 	function () {
 	  function LocalDatastore(instance, storeOptions, storeInstanceOptions) {
+	    var _this = this;
+
 	    _classCallCheck(this, LocalDatastore);
 
 	    this.instance = instance;
@@ -1773,16 +1775,34 @@
 	    this._running = 0;
 	    this._done = 0;
 	    this._unblockTime = 0;
+	    this.deltaTime = 0;
 	    this.ready = this.Promise.resolve();
 	    this.clients = {};
+	    this.oldTime = new Date();
+	    this.intervalCheckTime = setInterval(function () {
+	      var newTime, oldTime, timeDiff;
+	      oldTime = _this.oldTime || new Date();
+	      newTime = new Date();
+	      timeDiff = newTime - oldTime;
+	      _this.oldTime = newTime;
+
+	      if (Math.abs(timeDiff) >= 5000) {
+	        return _this.timeChanged(timeDiff);
+	      }
+	    }, 500);
 
 	    this._startHeartbeat();
 	  }
 
 	  _createClass(LocalDatastore, [{
+	    key: "timeChanged",
+	    value: function timeChanged(delta) {
+	      return this.deltaTime = delta;
+	    }
+	  }, {
 	    key: "_startHeartbeat",
 	    value: function _startHeartbeat() {
-	      var _this = this;
+	      var _this2 = this;
 
 	      var base;
 
@@ -1791,24 +1811,24 @@
 	          var amount, incr, maximum, now, reservoir;
 	          now = Date.now();
 
-	          if (_this.storeOptions.reservoirRefreshInterval != null && now >= _this._lastReservoirRefresh + _this.storeOptions.reservoirRefreshInterval) {
-	            _this._lastReservoirRefresh = now;
-	            _this.storeOptions.reservoir = _this.storeOptions.reservoirRefreshAmount;
+	          if (_this2.storeOptions.reservoirRefreshInterval != null && now >= _this2._lastReservoirRefresh + _this2.storeOptions.reservoirRefreshInterval) {
+	            _this2._lastReservoirRefresh = now;
+	            _this2.storeOptions.reservoir = _this2.storeOptions.reservoirRefreshAmount;
 
-	            _this.instance._drainAll(_this.computeCapacity());
+	            _this2.instance._drainAll(_this2.computeCapacity());
 	          }
 
-	          if (_this.storeOptions.reservoirIncreaseInterval != null && now >= _this._lastReservoirIncrease + _this.storeOptions.reservoirIncreaseInterval) {
-	            var _this$storeOptions = _this.storeOptions;
-	            amount = _this$storeOptions.reservoirIncreaseAmount;
-	            maximum = _this$storeOptions.reservoirIncreaseMaximum;
-	            reservoir = _this$storeOptions.reservoir;
-	            _this._lastReservoirIncrease = now;
+	          if (_this2.storeOptions.reservoirIncreaseInterval != null && now >= _this2._lastReservoirIncrease + _this2.storeOptions.reservoirIncreaseInterval) {
+	            var _this2$storeOptions = _this2.storeOptions;
+	            amount = _this2$storeOptions.reservoirIncreaseAmount;
+	            maximum = _this2$storeOptions.reservoirIncreaseMaximum;
+	            reservoir = _this2$storeOptions.reservoir;
+	            _this2._lastReservoirIncrease = now;
 	            incr = maximum != null ? Math.min(amount, maximum - reservoir) : amount;
 
 	            if (incr > 0) {
-	              _this.storeOptions.reservoir += incr;
-	              return _this.instance._drainAll(_this.computeCapacity());
+	              _this2.storeOptions.reservoir += incr;
+	              return _this2.instance._drainAll(_this2.computeCapacity());
 	            }
 	          }
 	        }, this.heartbeatInterval)).unref === "function" ? base.unref() : void 0;
@@ -2051,9 +2071,9 @@
 	    key: "computeCapacity",
 	    value: function computeCapacity() {
 	      var maxConcurrent, reservoir;
-	      var _this$storeOptions2 = this.storeOptions;
-	      maxConcurrent = _this$storeOptions2.maxConcurrent;
-	      reservoir = _this$storeOptions2.reservoir;
+	      var _this$storeOptions = this.storeOptions;
+	      maxConcurrent = _this$storeOptions.maxConcurrent;
+	      reservoir = _this$storeOptions.reservoir;
 
 	      if (maxConcurrent != null && reservoir != null) {
 	        return Math.min(maxConcurrent - this._running, reservoir);
@@ -2070,6 +2090,8 @@
 	    value: function conditionsCheck(weight) {
 	      var capacity;
 	      capacity = this.computeCapacity();
+	      this.instance.Events.trigger("message", 'capacity is ' + capacity);
+	      this.instance.Events.trigger("message", 'weight is ' + weight);
 	      return capacity == null || weight <= capacity;
 	    }
 	  }, {
@@ -2145,6 +2167,9 @@
 	  }, {
 	    key: "check",
 	    value: function check(weight, now) {
+	      this.instance.Events.trigger("message", '@conditionsCheck weight' + weight.toString());
+	      this.instance.Events.trigger("message", '@conditionsCheck @_nextRequest' + this._nextRequest.toString());
+	      this.instance.Events.trigger("message", '@conditionsCheck now' + now.toString());
 	      return this.conditionsCheck(weight) && this._nextRequest - now <= 0;
 	    }
 	  }, {
@@ -2197,7 +2222,7 @@
 	                now = Date.now();
 
 	                if (!this.conditionsCheck(weight)) {
-	                  _context11.next = 11;
+	                  _context11.next = 16;
 	                  break;
 	                }
 
@@ -2209,18 +2234,24 @@
 
 	                wait = Math.max(this._nextRequest - now, 0);
 	                this._nextRequest = now + wait + this.storeOptions.minTime;
+	                this.instance.Events.trigger("message", 'deltaTime' + this.deltaTime.toString());
+	                this.instance.Events.trigger("message", '@storeOptions' + JSON.stringify(this.storeOptions));
+	                this.instance.Events.trigger("message", 'wait' + wait.toString());
+	                this.instance.Events.trigger("message", 'wait' + now.toString());
+	                this.instance.Events.trigger("message", 'wait' + now.toLocaleString());
 	                return _context11.abrupt("return", {
 	                  success: true,
 	                  wait: wait,
 	                  reservoir: this.storeOptions.reservoir
 	                });
 
-	              case 11:
+	              case 16:
+	                this.instance.Events.trigger("message", 'success is false');
 	                return _context11.abrupt("return", {
 	                  success: false
 	                });
 
-	              case 12:
+	              case 18:
 	              case "end":
 	                return _context11.stop();
 	            }
@@ -2264,10 +2295,13 @@
 	              case 4:
 	                now = Date.now();
 	                reachedHWM = this.storeOptions.highWater != null && queueLength === this.storeOptions.highWater && !this.check(weight, now);
+	                this.instance.Events.trigger("message", 'reachedHWM' + reachedHWM.toString());
 	                blocked = this.strategyIsBlock() && (reachedHWM || this.isBlocked(now));
 
 	                if (blocked) {
+	                  this.instance.Events.trigger("message", 'blocked' + now.toString());
 	                  this._unblockTime = now + this.computePenalty();
+	                  this.instance.Events.trigger("message", '@_unblockTime' + this._unblockTime.toString());
 	                  this._nextRequest = this._unblockTime + this.storeOptions.minTime;
 
 	                  this.instance._dropAllQueued();
@@ -2279,7 +2313,7 @@
 	                  strategy: this.storeOptions.strategy
 	                });
 
-	              case 9:
+	              case 10:
 	              case "end":
 	                return _context12.stop();
 	            }
@@ -4542,11 +4576,15 @@
 	      value: function _run(index, job, wait) {
 	        var _this2 = this;
 
-	        var clearGlobalState, free, run;
+	        var a, clearGlobalState, free, run;
+	        wait = 0;
 	        job.doRun();
 	        clearGlobalState = this._clearGlobalState.bind(this, index);
 	        run = this._run.bind(this, index, job);
 	        free = this._free.bind(this, index, job);
+	        this.Events.trigger("debug", " DEBUG ---- oheo ---- wait " + wait.toString());
+	        a = new Date();
+	        this.Events.trigger("debug", " DEBUG ---- oheo ---- wait HR " + a.toLocaleString());
 	        return this._scheduled[index] = {
 	          timeout: setTimeout(function () {
 	            return job.doExecute(_this2._limiter, clearGlobalState, run, free);
