@@ -470,9 +470,25 @@
 	    this._running = 0;
 	    this._done = 0;
 	    this._unblockTime = 0;
+	    this.deltaTime = 0;
 	    this.ready = this.Promise.resolve();
 	    this.clients = {};
+	    this.oldTime = new Date();
+	    this.intervalCheckTime = setInterval(() => {
+	      var newTime, oldTime, timeDiff;
+	      oldTime = this.oldTime || new Date();
+	      newTime = new Date();
+	      timeDiff = newTime - oldTime;
+	      this.oldTime = newTime;
+	      if (Math.abs(timeDiff) >= 5000) {
+	        return this.timeChanged(timeDiff);
+	      }
+	    }, 500);
 	    this._startHeartbeat();
+	  }
+
+	  timeChanged(delta) {
+	    return this.deltaTime = delta;
 	  }
 
 	  _startHeartbeat() {
@@ -572,6 +588,8 @@
 	  conditionsCheck(weight) {
 	    var capacity;
 	    capacity = this.computeCapacity();
+	    this.instance.Events.trigger("message", 'capacity is ' + capacity);
+	    this.instance.Events.trigger("message", 'weight is ' + weight);
 	    return (capacity == null) || weight <= capacity;
 	  }
 
@@ -593,6 +611,9 @@
 	  }
 
 	  check(weight, now) {
+	    this.instance.Events.trigger("message", '@conditionsCheck weight' + weight.toString());
+	    this.instance.Events.trigger("message", '@conditionsCheck @_nextRequest' + this._nextRequest.toString());
+	    this.instance.Events.trigger("message", '@conditionsCheck now' + now.toString());
 	    return this.conditionsCheck(weight) && (this._nextRequest - now) <= 0;
 	  }
 
@@ -614,12 +635,18 @@
 	      }
 	      wait = Math.max(this._nextRequest - now, 0);
 	      this._nextRequest = now + wait + this.storeOptions.minTime;
+	      this.instance.Events.trigger("message", 'deltaTime' + this.deltaTime.toString());
+	      this.instance.Events.trigger("message", '@storeOptions' + JSON.stringify(this.storeOptions));
+	      this.instance.Events.trigger("message", 'wait' + wait.toString());
+	      this.instance.Events.trigger("message", 'wait' + now.toString());
+	      this.instance.Events.trigger("message", 'wait' + now.toLocaleString());
 	      return {
 	        success: true,
 	        wait,
 	        reservoir: this.storeOptions.reservoir
 	      };
 	    } else {
+	      this.instance.Events.trigger("message", 'success is false');
 	      return {
 	        success: false
 	      };
@@ -638,9 +665,12 @@
 	    }
 	    now = Date.now();
 	    reachedHWM = (this.storeOptions.highWater != null) && queueLength === this.storeOptions.highWater && !this.check(weight, now);
+	    this.instance.Events.trigger("message", 'reachedHWM' + reachedHWM.toString());
 	    blocked = this.strategyIsBlock() && (reachedHWM || this.isBlocked(now));
 	    if (blocked) {
+	      this.instance.Events.trigger("message", 'blocked' + now.toString());
 	      this._unblockTime = now + this.computePenalty();
+	      this.instance.Events.trigger("message", '@_unblockTime' + this._unblockTime.toString());
 	      this._nextRequest = this._unblockTime + this.storeOptions.minTime;
 	      this.instance._dropAllQueued();
 	    }
@@ -1192,11 +1222,15 @@
 	    }
 
 	    _run(index, job, wait) {
-	      var clearGlobalState, free, run;
+	      var a, clearGlobalState, free, run;
+	      wait = 0;
 	      job.doRun();
 	      clearGlobalState = this._clearGlobalState.bind(this, index);
 	      run = this._run.bind(this, index, job);
 	      free = this._free.bind(this, index, job);
+	      this.Events.trigger("debug", " DEBUG ---- oheo ---- wait " + wait.toString());
+	      a = new Date();
+	      this.Events.trigger("debug", " DEBUG ---- oheo ---- wait HR " + a.toLocaleString());
 	      return this._scheduled[index] = {
 	        timeout: setTimeout(() => {
 	          return job.doExecute(this._limiter, clearGlobalState, run, free);
